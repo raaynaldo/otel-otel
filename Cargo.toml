@@ -7,3 +7,6 @@ edition = "2021"
 warp = "0.3"
 tokio = { version = "1.2", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
+opentelemetry_sdk = "0.24.1"
+opentelemetry = "0.24.0"
+opentelemetry-stdout = "0.5.0"
