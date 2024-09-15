@@ -1,11 +1,10 @@
 use opentelemetry::global;
-use opentelemetry::metrics::Histogram;
 use opentelemetry::KeyValue;
+use opentelemetry_otlp::{ExportConfig, Protocol, WithExportConfig};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::{runtime, Resource};
 use rand::Rng;
 use tokio::time::{sleep, Duration};
-use uuid::Uuid;
 use warp::{Filter, Rejection, Reply};
 
 async fn tokenize_counter() -> Result<impl Reply, Rejection> {
@@ -58,7 +57,8 @@ async fn tokenize_gauge() -> Result<impl Reply, Rejection> {
 
 #[tokio::main]
 async fn main() {
-    let meter_provider = init_meter_provider();
+    let meter_provider = init_meter_provider_otlp_exporter();
+    // let meter_provider = init_meter_provider_stdout_exporter();
 
     let tokenize_counter = warp::path("tokenize_counter")
         .and(warp::path::end())
@@ -93,7 +93,7 @@ async fn main() {
     meter_provider.shutdown().unwrap();
 }
 
-fn init_meter_provider() -> SdkMeterProvider {
+fn init_meter_provider_stdout_exporter() -> SdkMeterProvider {
     let exporter = opentelemetry_stdout::MetricsExporterBuilder::default()
         .with_encoder(|writer, data| Ok(serde_json::to_writer_pretty(writer, &data).unwrap()))
         .build();
@@ -111,6 +111,31 @@ fn init_meter_provider() -> SdkMeterProvider {
 
     global::set_meter_provider(provider.clone());
     provider
+}
+
+fn init_meter_provider_otlp_exporter() -> SdkMeterProvider {
+    let export_config = ExportConfig {
+        endpoint: "http://localhost:4317".to_string(),
+        timeout: Duration::from_secs(3),
+        protocol: Protocol::Grpc,
+    };
+
+    let meter = opentelemetry_otlp::new_pipeline()
+        .metrics(opentelemetry_sdk::runtime::Tokio)
+        .with_exporter(
+            opentelemetry_otlp::new_exporter()
+                .tonic()
+                .with_export_config(export_config),
+        )
+        .with_resource(Resource::new(vec![KeyValue::new("service.name", "Kanudo")]))
+        .with_period(Duration::from_secs(5))
+        .with_timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+
+    global::set_meter_provider(meter.clone());
+
+    meter
 }
 
 // async fn gauge() -> Result<impl Reply, Rejection> {
